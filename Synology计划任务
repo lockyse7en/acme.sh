@@ -1,0 +1,43 @@
+# Note: The $CERT_FOLDER must be hardcoded here since the running environment is unknown. Don't blindly copy&paste!
+# if you used the normal method the certificate will be installed in the system/default directory
+Ali_Key='LTAILea8DBK9q6VC'
+Ali_Secret='a1jgMUz8ZY0um9Vpzn4UugqWAD8eHi'
+DOMAIN='*.lockyse7en.com'
+CERTDIR="system/default"
+# if you used the alternative method it is copied to an unknown path, change the following example to the output of the creation process and uncomment. 
+#CERTDIR="_archive/AsDFgH"
+
+# do not change anything beyond this line!
+CERTROOTDIR="/usr/syno/etc/certificate"
+PACKAGECERTROOTDIR="/usr/local/etc/certificate"
+FULLCERTDIR="$CERTROOTDIR/$CERTDIR"
+
+# renew certificates, this used to be explained as a custom cronjob but works just as well within this script according to the output of the task. 
+/usr/local/share/acme.sh/acme.sh --cron --home /usr/local/share/acme.sh/
+
+# find all subdirectories containing cert.pem files
+PEMFILES=$(find $CERTROOTDIR -name cert.pem)
+if [ ! -z "$PEMFILES" ]; then
+        for DIR in $PEMFILES; do
+                # replace the certificates, but never the ones in the _archive folders as those are all the unique
+                # certificates on the system.
+                if [[ $DIR != *"/_archive/"* ]]; then
+                        rsync -avh "$FULLCERTDIR/" "$(dirname $DIR)/"
+                fi
+        done
+fi
+
+# reload
+/usr/syno/sbin/synoservicectl --reload nginx
+
+# update and restart all installed packages
+PEMFILES=$(find $PACKAGECERTROOTDIR -name cert.pem)
+if [ ! -z "$PEMFILES" ]; then
+	for DIR in $PEMFILES; do
+              #active directory has it's own certificate so we do not update that package
+              if [[ $DIR != *"/ActiveDirectoryServer/"* ]]; then
+		rsync -avh "$FULLCERTDIR/" "$(dirname $DIR)/"
+		/usr/syno/bin/synopkg restart $(echo $DIR | awk -F/ '{print $6}')
+              fi
+	done
+fi
